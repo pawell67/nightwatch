@@ -1,6 +1,44 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/nightwatch/compare/v1.24.4...1.x)
+## [Unreleased](https://github.com/laravel/nightwatch/compare/v1.27.0...1.x)
+
+## [v1.27.0](https://github.com/laravel/nightwatch/compare/v1.26.0...v1.27.0) - 2026-05-21
+
+### What's Changed
+
+* Standardise naming conventions by [@timacdonald](https://github.com/timacdonald) in https://github.com/laravel/nightwatch/pull/359
+* Fix Laravel 13 serialization test by [@jradtilbrook](https://github.com/jradtilbrook) in https://github.com/laravel/nightwatch/pull/366
+* Handle `vapor:schedule` for sub-minute scheduling by [@jradtilbrook](https://github.com/jradtilbrook) in https://github.com/laravel/nightwatch/pull/368
+* Add more test assertions by [@jessarcher](https://github.com/jessarcher) in https://github.com/laravel/nightwatch/pull/369
+
+**Full Changelog**: https://github.com/laravel/nightwatch/compare/1.26.1...v1.27.0
+
+## [v1.26.0](https://github.com/laravel/nightwatch/compare/v1.25.0...v1.26.0) - 2026-04-01
+
+### What's Changed
+
+* Create `nightwatch:deploy` command by [@sbourouis](https://github.com/sbourouis) in https://github.com/laravel/nightwatch/pull/282
+
+**Full Changelog**: https://github.com/laravel/nightwatch/compare/v1.25.0...v1.26.0
+
+## [v1.25.0](https://github.com/laravel/nightwatch/compare/v1.24.4...v1.25.0) - 2026-03-31
+
+#### What's Changed
+
+* Add Laravel 13 to CI by [@timacdonald](https://github.com/timacdonald) in https://github.com/laravel/nightwatch/pull/339
+* Add configure-nightwatch Boost skill by [@pushpak1300](https://github.com/pushpak1300) in https://github.com/laravel/nightwatch/pull/333
+* Auto-select port in tests by [@timacdonald](https://github.com/timacdonald) in https://github.com/laravel/nightwatch/pull/349
+* Fix flaky test by [@timacdonald](https://github.com/timacdonald) in https://github.com/laravel/nightwatch/pull/353
+* Update Boost skills by [@jessarcher](https://github.com/jessarcher) in https://github.com/laravel/nightwatch/pull/354
+* Ignore `octane:status` vendor command by default by [@timacdonald](https://github.com/timacdonald) in https://github.com/laravel/nightwatch/pull/352
+* Add test for incomplete class job attempt and exception collection by [@timacdonald](https://github.com/timacdonald) in https://github.com/laravel/nightwatch/pull/355
+* Switch to unique deploy UUID for deployment config by [@jradtilbrook](https://github.com/jradtilbrook) in https://github.com/laravel/nightwatch/pull/350
+
+### New Contributors
+
+* [@pushpak1300](https://github.com/pushpak1300) made their first contribution in https://github.com/laravel/nightwatch/pull/333
+
+**Full Changelog**: https://github.com/laravel/nightwatch/compare/v1.24.4...v1.25.0
 
 ## [v1.24.4](https://github.com/laravel/nightwatch/compare/v1.24.3...v1.24.4) - 2026-03-18
 

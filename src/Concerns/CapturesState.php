@@ -185,6 +185,7 @@ trait CapturesState
             'model:prune',
             'nightwatch:agent',
             'nightwatch:status',
+            'octane:status',
             'queue:monitor',
             'reverb:start',
             'schedule:list',
@@ -690,7 +691,7 @@ trait CapturesState
     /**
      * @internal
      */
-    public function prepareForNextScheduledTask(Event $event): void
+    public function prepareForScheduledTask(Event $event): void
     {
         /*
          * Reset state for the current scheduled task execution.
