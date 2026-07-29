@@ -1,6 +1,79 @@
 # Release Notes
 
-## [Unreleased](https://github.com/laravel/nightwatch/compare/v1.27.0...1.x)
+## [Unreleased](https://github.com/laravel/nightwatch/compare/v1.28.5...1.x)
+
+## [v1.28.2](https://github.com/laravel/nightwatch/compare/v1.28.1...v1.28.2) - 2026-06-24
+
+### What's Changed
+
+* Revert "Capture and restore first trace on initial framework boot (#3… by [@timacdonald](https://github.com/timacdonald) in https://github.com/laravel/nightwatch/pull/386
+
+**Full Changelog**: https://github.com/laravel/nightwatch/compare/v1.28.1...v1.28.2
+
+## [v1.28.5](https://github.com/laravel/nightwatch/compare/v1.28.4...v1.28.5) - 2026-07-28
+
+### What's Changed
+
+* Update agent dependencies with dependabot by [@timacdonald](https://github.com/timacdonald) in https://github.com/laravel/nightwatch/pull/391
+* Bump the composer group in /agent with 3 updates by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/nightwatch/pull/392
+* Bump the github-actions group with 2 updates by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/nightwatch/pull/393
+* Bump phpstan/phpstan from 2.2.2 to 2.2.3 in /agent in the composer group by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/nightwatch/pull/395
+* Bump the github-actions group with 4 updates by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/nightwatch/pull/396
+* Bump docker/login-action from 4.3.0 to 4.4.0 in the github-actions group by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/nightwatch/pull/400
+* Bump the composer group in /agent with 2 updates by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/nightwatch/pull/399
+* Bump softprops/action-gh-release from 3.0.1 to 3.0.2 in the github-actions group by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/nightwatch/pull/401
+* Respect `ExceptionHandler::dontReport` rules when NW manually reports exceptions in hooks by [@timacdonald](https://github.com/timacdonald) in https://github.com/laravel/nightwatch/pull/404
+
+**Full Changelog**: https://github.com/laravel/nightwatch/compare/v1.28.4...v1.28.5
+
+## [v1.28.4](https://github.com/laravel/nightwatch/compare/v1.28.3...v1.28.4) - 2026-06-30
+
+### What's Changed
+
+* Support direct connection types by [@timacdonald](https://github.com/timacdonald) in https://github.com/laravel/nightwatch/pull/390
+* Bump the github-actions group across 1 directory with 5 updates by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/nightwatch/pull/382
+* Support enum queues via Queue attribute by [@timacdonald](https://github.com/timacdonald) in https://github.com/laravel/nightwatch/pull/361
+
+**Full Changelog**: https://github.com/laravel/nightwatch/compare/v1.28.3...v1.28.4
+
+## [v1.28.3](https://github.com/laravel/nightwatch/compare/v1.28.1...v1.28.3) - 2026-06-24
+
+### What's Changed
+
+* Move trace handling lower to allow registering classes on double boot by [@jradtilbrook](https://github.com/jradtilbrook) in https://github.com/laravel/nightwatch/pull/387
+
+**Full Changelog**: https://github.com/laravel/nightwatch/compare/v1.28.2...v1.28.3
+
+## [v1.28.1](https://github.com/laravel/nightwatch/compare/v1.28.0...v1.28.1) - 2026-06-23
+
+### What's Changed
+
+* Fix tests broken against latest dependencies by [@jradtilbrook](https://github.com/jradtilbrook) in https://github.com/laravel/nightwatch/pull/384
+* Capture and restore first trace on initial framework boot by [@jradtilbrook](https://github.com/jradtilbrook) in https://github.com/laravel/nightwatch/pull/383
+
+**Full Changelog**: https://github.com/laravel/nightwatch/compare/v1.28.0...v1.28.1
+
+## [v1.28.0](https://github.com/laravel/nightwatch/compare/v1.27.0...v1.28.0) - 2026-06-04
+
+#### What's Changed
+
+* Fix dependabot permissions by [@jessarcher](https://github.com/jessarcher) in https://github.com/laravel/nightwatch/pull/370
+* Fix dependabot permissions by [@jessarcher](https://github.com/jessarcher) in https://github.com/laravel/nightwatch/pull/371
+* Pin GitHub Actions to commit SHAs and add Dependabot config by [@joetannenbaum](https://github.com/joetannenbaum) in https://github.com/laravel/nightwatch/pull/363
+* Bump symfony/process from 7.3.4 to 7.3.11 in /agent by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/nightwatch/pull/365
+* Bump the github-actions group with 7 updates by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/nightwatch/pull/372
+* Bump phpunit/phpunit from 11.5.44 to 11.5.50 in /agent by [@dependabot](https://github.com/dependabot)[bot] in https://github.com/laravel/nightwatch/pull/364
+* Use cloud trace ID when present by [@jradtilbrook](https://github.com/jradtilbrook) in https://github.com/laravel/nightwatch/pull/357
+* GitHub Actions hardening by [@nunomaduro](https://github.com/nunomaduro) in https://github.com/laravel/nightwatch/pull/376
+* Add Dependabot cooldown of 5 days by [@nunomaduro](https://github.com/nunomaduro) in https://github.com/laravel/nightwatch/pull/377
+* Persist git credentials for release workflow by [@jradtilbrook](https://github.com/jradtilbrook) in https://github.com/laravel/nightwatch/pull/375
+
+### New Contributors
+
+* [@joetannenbaum](https://github.com/joetannenbaum) made their first contribution in https://github.com/laravel/nightwatch/pull/363
+* [@dependabot](https://github.com/dependabot)[bot] made their first contribution in https://github.com/laravel/nightwatch/pull/365
+
+**Full Changelog**: https://github.com/laravel/nightwatch/compare/v1.27.0...v1.28.0
 
 ## [v1.27.0](https://github.com/laravel/nightwatch/compare/v1.26.0...v1.27.0) - 2026-05-21
 

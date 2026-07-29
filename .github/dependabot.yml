@@ -4,7 +4,19 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 5
     groups:
       github-actions:
+        patterns:
+          - "*"
+  - package-ecosystem: "composer"
+    directory: "agent/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 5
+    groups:
+      composer:
         patterns:
           - "*"
