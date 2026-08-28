@@ -23,7 +23,6 @@ use Illuminate\Queue\Events\JobReleasedAfterException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Jobs\DatabaseJob;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Queue\SqsQueue;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Date;
@@ -37,6 +36,7 @@ use Laravel\Nightwatch\Compatibility;
 use Laravel\Nightwatch\Facades\Nightwatch;
 use Laravel\Vapor\Console\Commands\VaporWorkCommand;
 use Laravel\Vapor\Events\LambdaEvent;
+use Laravel\Vapor\Queue\VaporQueue;
 use Mockery;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Ramsey\Uuid\Uuid;
@@ -110,7 +110,9 @@ class JobAttemptSensorTest extends TestCase
 
         $mockSqsConnector = Mockery::mock(SqsConnector::class);
         $mockSqsConnector->shouldReceive('connect')
-            ->andReturn(new SqsQueue($mockSqsClient, 'default'));
+            ->andReturn(new VaporQueue($mockSqsClient, 'default'));
+
+        $mockSqsClient->allows('getOverflowStorage')->andReturn([]);
 
         $this->app['queue']->extend('sqs', fn () => $mockSqsConnector);
 
@@ -191,7 +193,7 @@ class JobAttemptSensorTest extends TestCase
         FailedJob::dispatch();
         Artisan::call($workCommand, [...$workOptions, '--tries' => 2]);
 
-        $ingest->assertWrittenTimes(1);
+        $ingest->assertWrittenTimes(2);
         $ingest->assertLatestWrite('job-attempt:*', [
             [
                 'v' => 1,
@@ -299,7 +301,7 @@ class JobAttemptSensorTest extends TestCase
         FailedJob::dispatch();
         Artisan::call($workCommand, $workOptions);
 
-        $ingest->assertWrittenTimes(1);
+        $ingest->assertWrittenTimes(2);
         $ingest->assertLatestWrite('job-attempt:*', [
             [
                 'v' => 1,
@@ -563,11 +565,11 @@ class JobAttemptSensorTest extends TestCase
             Artisan::call($workCommand, $options);
         });
 
-        $ingest->assertWrittenTimes(2);
-        $ingest->assertWrite(0, 'job-attempt:0.attempt', 1);
+        $ingest->assertWrittenTimes(4);
         $ingest->assertWrite(0, 'exception:0.message', 'Job failed');
-        $ingest->assertWrite(1, 'job-attempt:0.attempt', 2);
-        $ingest->assertWrite(1, 'exception:0.message', 'Job failed');
+        $ingest->assertWrite(1, 'job-attempt:0.attempt', 1);
+        $ingest->assertWrite(2, 'exception:0.message', 'Job failed');
+        $ingest->assertWrite(3, 'job-attempt:0.attempt', 2);
     }
 
     #[DataProvider('workCommands')]
@@ -700,9 +702,9 @@ class JobAttemptSensorTest extends TestCase
             Artisan::call($workCommand, $options);
         });
 
-        $ingest->assertWrittenTimes(2);
-        $ingest->assertWrite(0, 'job-attempt:0.exception_preview', 'Job failed');
-        $ingest->assertWrite(1, 'job-attempt:0.exception_preview', '');
+        $ingest->assertWrittenTimes(3);
+        $ingest->assertWrite(1, 'job-attempt:0.exception_preview', 'Job failed');
+        $ingest->assertWrite(2, 'job-attempt:0.exception_preview', '');
     }
 
     #[DataProvider('workCommands')]
@@ -759,7 +761,27 @@ class JobAttemptSensorTest extends TestCase
                 return true;
             },
             'queue:listen' => function ($write) {
-                if (version_compare(Application::VERSION, '12.40.0', '>=')) {
+                if (version_compare(Application::VERSION, '13.25.0', '>=')) {
+                    $this->assertCount(7, $write);
+                    $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
+                        't' => 'cache-event',
+                        'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
+                        'execution_source' => 'job',
+                        'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
+                        'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
+                        'execution_stage' => 'action',
+                        'key' => 'illuminate:queues:paused',
+                    ], array_shift($write), array_keys($expected));
+                    $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
+                        't' => 'cache-event',
+                        'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
+                        'execution_source' => 'job',
+                        'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
+                        'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
+                        'execution_stage' => 'action',
+                        'key' => 'illuminate:queue:paused:database:default',
+                    ], array_shift($write), array_keys($expected));
+                } elseif (version_compare(Application::VERSION, '12.40.0', '>=')) {
                     $this->assertCount(6, $write);
                     $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
                         't' => 'cache-event',
@@ -819,7 +841,27 @@ class JobAttemptSensorTest extends TestCase
                 return true;
             },
             default => function ($write) {
-                if (version_compare(Application::VERSION, '12.40.0', '>=')) {
+                if (version_compare(Application::VERSION, '13.25.0', '>=')) {
+                    $this->assertCount(8, $write);
+                    $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
+                        't' => 'cache-event',
+                        'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
+                        'execution_source' => 'job',
+                        'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
+                        'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
+                        'execution_stage' => 'action',
+                        'key' => 'illuminate:queues:paused',
+                    ], array_shift($write), array_keys($expected));
+                    $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
+                        't' => 'cache-event',
+                        'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
+                        'execution_source' => 'job',
+                        'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
+                        'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
+                        'execution_stage' => 'action',
+                        'key' => 'illuminate:queue:paused:database:default',
+                    ], array_shift($write), array_keys($expected));
+                } elseif (version_compare(Application::VERSION, '12.40.0', '>=')) {
                     $this->assertCount(7, $write);
                     $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
                         't' => 'cache-event',
@@ -926,7 +968,11 @@ class JobAttemptSensorTest extends TestCase
                     'outgoing_requests' => 0,
                 ], $write[0], array_keys($expected));
             }, else: function () use ($write) {
-                if (version_compare(Application::VERSION, '12.40.0', '>=')) {
+                if (version_compare(Application::VERSION, '13.25.0', '>=')) {
+                    $this->assertCount(9, $write);
+                    array_shift($write);
+                    array_shift($write);
+                } elseif (version_compare(Application::VERSION, '12.40.0', '>=')) {
                     $this->assertCount(8, $write);
                     array_shift($write);
                 } else {
@@ -991,8 +1037,8 @@ class JobAttemptSensorTest extends TestCase
             JSON, flags: JSON_THROW_ON_ERROR), flags: JSON_THROW_ON_ERROR)]);
         Artisan::call('queue:work', $this->workCommands()['queue:work'][1]);
 
-        $ingest->assertWrittenTimes(1);
-        $ingest->assertLatestWrite('exception:*', function ($exceptions) {
+        $ingest->assertWrittenTimes(2);
+        $ingest->assertWrite(0, 'exception:*', function ($exceptions) {
             $this->assertCount(1, $exceptions);
 
             if (version_compare(Application::VERSION, '13.6.0', '>=')) {

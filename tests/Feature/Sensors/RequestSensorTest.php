@@ -15,13 +15,17 @@ use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Laravel\Nightwatch\Compatibility;
+use Laravel\Nightwatch\Events\IngestingEvents;
 use Laravel\Nightwatch\ExecutionStage;
+use Laravel\Nightwatch\Facades\Nightwatch;
 use Laravel\Nightwatch\SensorManager;
 use Livewire\Livewire;
 use Orchestra\Testbench\Attributes\WithEnv;
@@ -30,6 +34,7 @@ use Tests\TestCase;
 use function fseek;
 use function fwrite;
 use function hash;
+use function hex2bin;
 use function html_entity_decode;
 use function json_decode;
 use function json_encode;
@@ -40,6 +45,7 @@ use function preg_match;
 use function preg_match_all;
 use function report;
 use function response;
+use function str_contains;
 use function stream_get_meta_data;
 use function strlen;
 use function tap;
@@ -235,6 +241,39 @@ class RequestSensorTest extends TestCase
         $ingest->assertLatestWrite('request:0.user', 'abc-123');
     }
 
+    public function test_it_captures_events_triggered_during_an_authenticated_request(): void
+    {
+        $ingest = $this->fakeIngest();
+        $ingestingEvents = [];
+        Event::listen(IngestingEvents::class, function (IngestingEvents $event) use (&$ingestingEvents): void {
+            $ingestingEvents[] = $event;
+        });
+        Route::get('/users', function () {
+            DB::table('users')->get();
+            DB::table('users')->get();
+
+            Cache::put('users:345', 'xxxx');
+            Cache::get('users:345');
+
+            return [];
+        });
+
+        $response = $this->actingAs(new GenericUser(['id' => 'abc-123']))
+            ->get('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('request:0.user', 'abc-123');
+        $ingest->assertLatestWrite('request:0.queries', 2);
+        $ingest->assertLatestWrite('request:0.cache_events', 2);
+
+        // 1 request + 2 queries + 2 cache events + 1 user record, with the
+        // user record excluded from the count.
+        $this->assertCount(1, $ingestingEvents);
+        $ingest->assertLatestWriteRecordCount(6);
+        $this->assertSame(5, $ingestingEvents[0]->eventCount());
+    }
+
     public function test_it_captures_query_parameters(): void
     {
         $ingest = $this->fakeIngest();
@@ -335,6 +374,31 @@ class RequestSensorTest extends TestCase
         $this->assertStringNotContainsString('secret', $ingest->latestWriteAsString());
     }
 
+    public function test_it_does_not_escape_slashes_in_the_wire_payload(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::get('/users', fn () => []);
+
+        $response = $this->get('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $this->assertStringContainsString('"url":"http://localhost/users"', $ingest->latestWriteAsString());
+    }
+
+    public function test_it_preserves_zero_fractions_in_the_wire_payload(): void
+    {
+        $this->setExecutionStart(CarbonImmutable::parse('2000-01-01 01:02:03.000000'));
+        $ingest = $this->fakeIngest();
+        Route::get('/users', fn () => []);
+
+        $response = $this->get('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $this->assertStringContainsString('"timestamp":946688523.0,', $ingest->latestWriteAsString());
+    }
+
     public function test_it_captures_the_duration_in_microseconds(): void
     {
         $ingest = $this->fakeIngest();
@@ -363,7 +427,7 @@ class RequestSensorTest extends TestCase
         $response = $this->get('/users');
 
         $response->assertServerError();
-        $ingest->assertWrittenTimes(1);
+        $ingest->assertWrittenTimes(2);
         $ingest->assertLatestWrite('request:0.exceptions', 2);
         $ingest->assertLatestWrite('request:0.exception_preview', 'Unhandled error');
     }
@@ -821,6 +885,90 @@ class RequestSensorTest extends TestCase
         });
     }
 
+    public function test_it_can_capture_binary_context(): void
+    {
+        $this->markTestSkippedUnless(Compatibility::$contextExists, 'This test requires the Laravel Context.');
+
+        $unrecoverableExceptions = [];
+        Nightwatch::handleUnrecoverableExceptionsUsing(function ($e) use (&$unrecoverableExceptions): void {
+            $unrecoverableExceptions[] = $e;
+        });
+        $ingest = $this->fakeIngest();
+        Route::get('/test', function () {
+            Context::add('binary', hex2bin('abc123'));
+        });
+
+        $response = $this->get('/test');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('request:0.context', function ($context) {
+            $context = json_decode($context, true);
+            $this->assertSame(['binary' => '��#'], $context);
+
+            return true;
+        });
+        $this->assertSame([], $unrecoverableExceptions);
+    }
+
+    public function test_it_can_capture_non_utf_8_context(): void
+    {
+        $this->markTestSkippedUnless(Compatibility::$contextExists, 'This test requires the Laravel Context.');
+
+        $unrecoverableExceptions = [];
+        Nightwatch::handleUnrecoverableExceptionsUsing(function ($e) use (&$unrecoverableExceptions): void {
+            $unrecoverableExceptions[] = $e;
+        });
+        $ingest = $this->fakeIngest();
+        Route::get('/test', function () {
+            Context::add('non-utf-8', "Caf\xe9");
+        });
+
+        $response = $this->get('/test');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('request:0.context', function ($context) {
+            $context = json_decode($context, true);
+            $this->assertSame(['non-utf-8' => "Caf\u{FFFD}"], $context);
+
+            return true;
+        });
+        $this->assertSame([], $unrecoverableExceptions);
+    }
+
+    public function test_it_does_not_escape_slashes_in_the_context(): void
+    {
+        $this->markTestSkippedUnless(Compatibility::$contextExists, 'This test requires the Laravel Context.');
+
+        $ingest = $this->fakeIngest();
+        Route::get('/test', function () {
+            Context::add('url', 'https://example.com/path');
+        });
+
+        $response = $this->get('/test');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('request:0.context', fn ($context) => str_contains($context, '"url":"https://example.com/path"'));
+    }
+
+    public function test_it_does_not_escape_unicode_characters_in_the_context(): void
+    {
+        $this->markTestSkippedUnless(Compatibility::$contextExists, 'This test requires the Laravel Context.');
+
+        $ingest = $this->fakeIngest();
+        Route::get('/test', function () {
+            Context::add('text', 'café');
+        });
+
+        $response = $this->get('/test');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('request:0.context', fn ($context) => str_contains($context, 'café'));
+    }
+
     public function test_it_captures_request_headers(): void
     {
         $ingest = $this->fakeIngest();
@@ -913,6 +1061,70 @@ class RequestSensorTest extends TestCase
         });
     }
 
+    public function test_it_can_capture_binary_headers(): void
+    {
+        $unrecoverableExceptions = [];
+        Nightwatch::handleUnrecoverableExceptionsUsing(function ($e) use (&$unrecoverableExceptions): void {
+            $unrecoverableExceptions[] = $e;
+        });
+        $ingest = $this->fakeIngest();
+        Route::get('/test', function () {});
+
+        $response = $this
+            ->withHeader('Binary-Header', hex2bin('abc123'))
+            ->get('/test');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('request:0.headers', function ($headers) {
+            $headers = json_decode($headers, true);
+            $this->assertArrayHasKey('binary-header', $headers);
+            $this->assertSame(['��#'], $headers['binary-header']);
+
+            return true;
+        });
+        $this->assertSame([], $unrecoverableExceptions);
+    }
+
+    public function test_it_can_capture_non_utf_8_headers(): void
+    {
+        $unrecoverableExceptions = [];
+        Nightwatch::handleUnrecoverableExceptionsUsing(function ($e) use (&$unrecoverableExceptions): void {
+            $unrecoverableExceptions[] = $e;
+        });
+        $ingest = $this->fakeIngest();
+        Route::get('/test', function () {});
+
+        $response = $this
+            ->withHeader('Non-Utf-8-Header', "Caf\xe9")
+            ->get('/test');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('request:0.headers', function ($headers) {
+            $headers = json_decode($headers, true);
+            $this->assertArrayHasKey('non-utf-8-header', $headers);
+            $this->assertSame(["Caf\u{FFFD}"], $headers['non-utf-8-header']);
+
+            return true;
+        });
+        $this->assertSame([], $unrecoverableExceptions);
+    }
+
+    public function test_it_does_not_escape_unicode_characters_in_the_headers(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::get('/test', function () {});
+
+        $response = $this
+            ->withHeader('Test-Header', 'café')
+            ->get('/test');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('request:0.headers', fn ($headers) => str_contains($headers, 'café'));
+    }
+
     public function test_it_handles_unconventional_headers(): void
     {
         $ingest = $this->fakeIngest();
@@ -954,7 +1166,7 @@ class RequestSensorTest extends TestCase
             ]);
 
         $response->assertInternalServerError();
-        $ingest->assertWrittenTimes(1);
+        $ingest->assertWrittenTimes(2);
         $ingest->assertLatestWrite('request:0.payload', function ($payload) {
             $payload = json_decode($payload, true);
             $this->assertSame([
@@ -978,6 +1190,122 @@ class RequestSensorTest extends TestCase
     }
 
     #[WithEnv('NIGHTWATCH_CAPTURE_REQUEST_PAYLOAD', 'true')]
+    public function test_it_can_capture_binary_payload_values(): void
+    {
+        $unrecoverableExceptions = [];
+        Nightwatch::handleUnrecoverableExceptionsUsing(function ($e) use (&$unrecoverableExceptions): void {
+            $unrecoverableExceptions[] = $e;
+        });
+        $ingest = $this->fakeIngest();
+        Route::patch('/register', function () {
+            throw new Exception('Whoops!');
+        });
+
+        $response = $this->patch('/register', [
+            'binary' => hex2bin('abc123'),
+        ]);
+
+        $response->assertInternalServerError();
+        $ingest->assertWrittenTimes(2);
+        $ingest->assertLatestWrite('request:0.payload', function ($payload) {
+            $payload = json_decode($payload, true);
+            $this->assertSame([
+                'binary' => '��#',
+                '_nightwatch_files' => [],
+            ], $payload);
+
+            return true;
+        });
+        $this->assertSame([], $unrecoverableExceptions);
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_REQUEST_PAYLOAD', 'true')]
+    public function test_it_can_capture_non_utf_8_payload_values(): void
+    {
+        $unrecoverableExceptions = [];
+        Nightwatch::handleUnrecoverableExceptionsUsing(function ($e) use (&$unrecoverableExceptions): void {
+            $unrecoverableExceptions[] = $e;
+        });
+        $ingest = $this->fakeIngest();
+        Route::patch('/register', function () {
+            throw new Exception('Whoops!');
+        });
+
+        $response = $this->patch('/register', [
+            'non-utf-8' => "Caf\xe9",
+        ]);
+
+        $response->assertInternalServerError();
+        $ingest->assertWrittenTimes(2);
+        $ingest->assertLatestWrite('request:0.payload', function ($payload) {
+            $payload = json_decode($payload, true);
+            $this->assertSame([
+                'non-utf-8' => "Caf\u{FFFD}",
+                '_nightwatch_files' => [],
+            ], $payload);
+
+            return true;
+        });
+        $this->assertSame([], $unrecoverableExceptions);
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_REQUEST_PAYLOAD', 'true')]
+    public function test_it_preserves_zero_fractions_in_the_payload(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::patch('/register', function () {
+            throw new Exception('Whoops!');
+        });
+
+        $response = $this->patchJson('/register', [
+            'amount' => 2.0,
+        ], options: JSON_PRESERVE_ZERO_FRACTION);
+
+        $response->assertInternalServerError();
+        $ingest->assertWrittenTimes(2);
+        $ingest->assertLatestWrite('request:0.payload', function ($payload) {
+            $payload = json_decode($payload, true);
+            $this->assertSame(2.0, $payload['amount']);
+
+            return true;
+        });
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_REQUEST_PAYLOAD', 'true')]
+    public function test_it_does_not_escape_slashes_in_the_payload(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::patch('/register', function () {
+            throw new Exception('Whoops!');
+        });
+
+        $response = $this->patch('/register', [
+            'url' => 'https://example.com/path',
+        ]);
+
+        $response->assertInternalServerError();
+        $ingest->assertWrittenTimes(2);
+        $ingest->assertLatestWrite('request:0.payload', fn ($payload) => str_contains($payload, '"url":"https://example.com/path"'));
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_REQUEST_PAYLOAD', 'true')]
+    public function test_it_does_not_escape_unicode_characters_in_the_payload(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::patch('/register', function () {
+            throw new Exception('Whoops!');
+        });
+
+        $response = $this->patch('/register', [
+            'text' => 'café',
+        ]);
+
+        $response->assertInternalServerError();
+        $ingest->assertWrittenTimes(2);
+        $ingest->assertLatestWrite('request:0.payload', fn ($payload) => str_contains($payload, 'café'));
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_REQUEST_PAYLOAD', 'true')]
     public function test_it_captures_a_json_payload_on_unhandled_exceptions(): void
     {
         $ingest = $this->fakeIngest();
@@ -994,7 +1322,7 @@ class RequestSensorTest extends TestCase
             ]);
 
         $response->assertInternalServerError();
-        $ingest->assertWrittenTimes(1);
+        $ingest->assertWrittenTimes(2);
         $ingest->assertLatestWrite('request:0.payload', function ($payload) {
             $payload = json_decode($payload, true);
             $this->assertSame([
@@ -1028,7 +1356,7 @@ class RequestSensorTest extends TestCase
             ]);
 
         $response->assertInternalServerError();
-        $ingest->assertWrittenTimes(1);
+        $ingest->assertWrittenTimes(2);
         $ingest->assertLatestWrite('request:0.payload', function ($payload) {
             $payload = json_decode($payload, true);
             $this->assertSame([
@@ -1060,7 +1388,7 @@ class RequestSensorTest extends TestCase
             ]);
 
         $response->assertInternalServerError();
-        $ingest->assertWrittenTimes(1);
+        $ingest->assertWrittenTimes(2);
         $ingest->assertLatestWrite('request:0.payload', '{"_nightwatch_error":"NOT_ENABLED"}');
     }
 
@@ -1075,7 +1403,7 @@ class RequestSensorTest extends TestCase
         $response = $this->json('GET', '/register?redirect=1');
 
         $response->assertInternalServerError();
-        $ingest->assertWrittenTimes(1);
+        $ingest->assertWrittenTimes(2);
         $ingest->assertLatestWrite('request:0.payload', '');
 
         $ingest->forgetWrites();
@@ -1083,7 +1411,7 @@ class RequestSensorTest extends TestCase
         $response = $this->json('GET', '/register?redirect=1', ['foo' => 'bar']);
 
         $response->assertInternalServerError();
-        $ingest->assertWrittenTimes(1);
+        $ingest->assertWrittenTimes(2);
         $ingest->assertLatestWrite('request:0.payload', '{"foo":"bar","_nightwatch_files":[]}');
 
         $ingest->forgetWrites();
@@ -1091,7 +1419,7 @@ class RequestSensorTest extends TestCase
         $response = $this->json('GET', '/register?redirect=1', ['foo' => UploadedFile::fake()->create('avatar.jpg', 1, 'image/jpeg')]);
 
         $response->assertInternalServerError();
-        $ingest->assertWrittenTimes(1);
+        $ingest->assertWrittenTimes(2);
         $ingest->assertLatestWrite('request:0.payload', '{"_nightwatch_files":{"foo":{"originalName":"avatar.jpg","size":1024,"error":0}}}');
     }
 
@@ -1115,7 +1443,7 @@ class RequestSensorTest extends TestCase
         );
 
         $response->assertInternalServerError();
-        $ingest->assertWrittenTimes(1);
+        $ingest->assertWrittenTimes(2);
         $ingest->assertLatestWrite('request:0.payload', '{"_nightwatch_error":"UNSUPPORTED_CONTENT_TYPE"}');
 
         $ingest->forgetWrites();
@@ -1132,7 +1460,7 @@ class RequestSensorTest extends TestCase
         );
 
         $response->assertInternalServerError();
-        $ingest->assertWrittenTimes(1);
+        $ingest->assertWrittenTimes(2);
         $ingest->assertLatestWrite('request:0.payload', '{"_nightwatch_error":"UNSUPPORTED_CONTENT_TYPE"}');
     }
 

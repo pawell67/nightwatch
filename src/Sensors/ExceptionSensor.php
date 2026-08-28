@@ -65,14 +65,11 @@ final class ExceptionSensor
 
         $nowMicrotime = $this->clock->microtime();
         [$file, $line] = $this->location->forException($e);
-        $normalizedException = match ($e->getPrevious()) {
-            null => $e,
-            default => match (true) {
-                $e instanceof ViewException,
-                $e instanceof IgnitionViewException => $e->getPrevious(),
-                default => $e,
-            },
-        };
+        $normalizedException = $e;
+
+        while (($normalizedException instanceof ViewException || $normalizedException instanceof IgnitionViewException) && $normalizedException->getPrevious() !== null) {
+            $normalizedException = $normalizedException->getPrevious();
+        }
 
         $handled ??= $this->wasManuallyReported($normalizedException);
 
@@ -211,7 +208,7 @@ final class ExceptionSensor
         $this->fileObjects = [];
         $this->capturedCodeFrames = 0;
 
-        return json_encode($trace, flags: JSON_THROW_ON_ERROR);
+        return json_encode($trace, flags: JSON_INVALID_UTF8_SUBSTITUTE | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
     private function fetchSourceCode(mixed $file, mixed $line, int $context = 5): ?stdClass
